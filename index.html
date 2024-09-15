@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sao Kê Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+      /* Custom CSS để làm giao diện đẹp hơn */
+      body {
+        background-color: #f4f7f9;
+      }
+
+      h1 {
+        margin-bottom: 30px;
+        font-size: 2.5rem;
+        color: #34495e;
+        text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+      }
+
+      .container {
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.1);
+        padding: 20px;
+      }
+
+      #upload-form {
+        margin-bottom: 20px;
+      }
+
+      #upload-form label {
+        font-weight: bold;
+      }
+
+      #upload-form .btn {
+        width: 100%;
+      }
+
+      #search-container {
+        margin-top: 20px;
+        margin-bottom: 20px;
+      }
+
+      .table {
+        margin-top: 20px;
+      }
+
+      .pagination a {
+        margin-right: 5px;
+        color: #3498db;
+        text-decoration: none;
+      }
+
+      .pagination a:hover {
+        text-decoration: underline;
+      }
+
+      .pagination .current {
+        font-weight: bold;
+        margin-right: 5px;
+      }
+
+      #pagination-container {
+        text-align: center;
+        margin-top: 20px;
+      }
+
+      /* Tùy chỉnh nút */
+      .btn-primary {
+        background-color: #2980b9;
+        border: none;
+      }
+
+      .btn-primary:hover {
+        background-color: #3498db;
+      }
+
+      /* Tùy chỉnh ô input */
+      .form-control {
+        border-radius: 5px;
+        box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      /* Đặt kích thước cho các cột trong bảng */
+      th, td {
+        text-align: center;
+        vertical-align: middle;
+      }
+
+      th {
+        background-color: #2980b9;
+        color: white;
+        font-size: 1.1rem;
+      }
+
+      td {
+        font-size: 0.95rem;
+      }
+
+      .table-striped > tbody > tr:nth-of-type(odd) {
+        background-color: #f2f2f2;
+      }
+    </style>
+  </head>
+  <body class="container">
+    <h1 class="text-center">Sao kê</h1>
+
+    <!-- Form để upload file CSV hoặc PDF -->
+    <div class="row mb-3">
+        <form id="upload-form">
+            <label for="csv_file">Upload file CSV </label>
+            <input type="file" id="file_input" accept=".csv,.pdf" class="form-control">
+            <button type="button" id="upload-btn" class="btn btn-primary mt-2">Upload</button>
+        </form>
+    </div>
+
+    <!-- Form tìm kiếm -->
+    <div class="row" id="search-container" style="display:none;">
+        <div class="input-group mb-3">
+            <input type="text" id="search-input" class="form-control" placeholder="Tìm kiếm">
+            <button type="button" id="search-btn" class="btn btn-primary">Tìm kiếm</button>
+        </div>
+    </div>
+
+    <!-- Hiển thị nội dung CSV hoặc PDF -->
+    <table class="table table-striped" id="data-table" style="display:none;">
+        <thead>
+            <tr id="table-header"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination-container" style="display:none;">
+        <span id="pagination-links"></span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist/build/pdf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.0/papaparse.min.js"></script>
+    <script>
+        const fileInput = document.getElementById('file_input');
+        const uploadBtn = document.getElementById('upload-btn');
+        const dataTable = document.getElementById('data-table');
+        const tableHeader = document.getElementById('table-header');
+        const tableBody = document.getElementById('table-body');
+        const searchInput = document.getElementById('search-input');
+        const searchBtn = document.getElementById('search-btn');
+        const paginationContainer = document.getElementById('pagination-container');
+        const paginationLinks = document.getElementById('pagination-links');
+        let currentData = [];
+        let currentPage = 1;
+        const rowsPerPage = 10;
+
+        // Xử lý nút upload
+        uploadBtn.addEventListener('click', () => {
+            const file = fileInput.files[0];
+            if (!file) {
+                alert("Vui lòng chọn file.");
+                return;
+            }
+            
+            const fileType = file.name.split('.').pop().toLowerCase();
+            if (fileType === 'csv') {
+                handleCSV(file);
+            } else if (fileType === 'pdf') {
+                handlePDF(file);
+            } else {
+                alert("Chỉ hỗ trợ file CSV và PDF.");
+            }
+        });
+
+        // Xử lý file CSV
+        function handleCSV(file) {
+            Papa.parse(file, {
+                header: true,
+                complete: function(results) {
+                    currentData = results.data;
+                    displayData(1);
+                    document.getElementById('search-container').style.display = 'block';
+                }
+            });
+        }
+
+        // Xử lý file PDF
+        function handlePDF(file) {
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const typedarray = new Uint8Array(event.target.result);
+                pdfjsLib.getDocument(typedarray).promise.then(function(pdf) {
+                    let pdfText = [];
+                    let pagesPromises = [];
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        pagesPromises.push(pdf.getPage(i).then(function(page) {
+                            return page.getTextContent().then(function(textContent) {
+                                let pageText = textContent.items.map(item => item.str).join(' ');
+                                pdfText.push({ "PDF Content": pageText });
+                            });
+                        }));
+                    }
+
+                    Promise.all(pagesPromises).then(() => {
+                        currentData = pdfText;
+                        displayData(1);
+                    });
+                });
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Hiển thị dữ liệu
+        function displayData(page) {
+            currentPage = page;
+            tableHeader.innerHTML = '';
+            tableBody.innerHTML = '';
+
+            if (currentData.length === 0) {
+                dataTable.style.display = 'none';
+                return;
+            }
+
+            const columns = Object.keys(currentData[0]);
+            columns.forEach(col => {
+                let th = document.createElement('th');
+                th.textContent = col;
+                tableHeader.appendChild(th);
+            });
+
+            const start = (page - 1) * rowsPerPage;
+            const end = start + rowsPerPage;
+            const paginatedData = currentData.slice(start, end);
+
+            paginatedData.forEach(row => {
+                let tr = document.createElement('tr');
+                columns.forEach(col => {
+                    let td = document.createElement('td');
+                    td.textContent = row[col] || '';
+                    tr.appendChild(td);
+                });
+                tableBody.appendChild(tr);
+            });
+
+            dataTable.style.display = 'block';
+            setupPagination();
+        }
+
+        // Thiết lập phân trang
+        function setupPagination() {
+            paginationLinks.innerHTML = '';
+            const totalPages = Math.ceil(currentData.length / rowsPerPage);
+
+            if (totalPages <= 1) {
+                paginationContainer.style.display = 'none';
+                return;
+            }
+
+            paginationContainer.style.display = 'block';
+
+            let first = document.createElement('a');
+            first.href = '#';
+            first.textContent = 'Trang đầu';
+            first.addEventListener('click', () => displayData(1));
+            paginationLinks.appendChild(first);
+
+            let prev = document.createElement('a');
+            prev.href = '#';
+            prev.textContent = 'Trang trước';
+            prev.addEventListener('click', () => displayData(Math.max(1, currentPage - 1)));
+            paginationLinks.appendChild(prev);
+
+            let next = document.createElement('a');
+            next.href = '#';
+            next.textContent = 'Trang tiếp';
+            next.addEventListener('click', () => displayData(Math.min(totalPages, currentPage + 1)));
+            paginationLinks.appendChild(next);
+
+            let last = document.createElement('a');
+            last.href = '#';
+            last.textContent = 'Trang cuối';
+            last.addEventListener('click', () => displayData(totalPages));
+            paginationLinks.appendChild(last);
+        }
+
+        // Xử lý tìm kiếm
+        searchBtn.addEventListener('click', () => {
+            const query = searchInput.value.toLowerCase();
+            const filteredData = currentData.filter(row => {
+                return Object.values(row).some(value => String(value).toLowerCase().includes(query));
+            });
+            currentData = filteredData;
+            displayData(1);
+        });
+    </script>
+  </body>
+</html>
